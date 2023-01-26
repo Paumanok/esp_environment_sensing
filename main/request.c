@@ -28,6 +28,8 @@
 #include "request.h"
 
 
+void build_measurement_post_request(char* final_buf );
+
 
 int parse_get_resp(char* buf, int buf_size)
 {

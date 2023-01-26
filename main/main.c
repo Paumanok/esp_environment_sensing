@@ -1,4 +1,10 @@
-
+/*
+*
+*
+*
+*
+*
+*/
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -20,83 +26,28 @@
 #include "sdkconfig.h"
 
 
-
-#define USE_BME280
-#ifdef USE_BME280
 #include "bme280.h"
 #include "bme280_user.h"
-struct bme280_dev dev;
-#else
-#include "dht11.h"
-#endif
 
-#define MAC_STR_LEN 18
-//#define BME280_FLOAT_ENABLE
+
+struct bme280_dev dev;
+pm25_state pm25;
+
+
+
+
 
 uint8_t dev_mac[6];
 char mac_str[MAC_STR_LEN];
 
-#define wroom
-#ifdef wroom
-    //i2c pins
-    #define I2C_SDA 18
-    #define I2C_SCL 19
-
-    #define UART_RX 26
-    #define USER_UART_NUM 2
-    //uart pins
-#else
-    //i2c pins
-    #define I2C_SDA 13
-    #define I2C_SCL 12
-    //uart pins
-    #define UART_RX 16
-    #define USER_UART_NUM 1
-#endif
+#define DEV_MODEL DEV_ESP32
 
 
-#define UART_BAUD_RATE 9600 
+
 const uart_port_t uart_num = USER_UART_NUM;
 
-#ifndef USE_BME280
-static void dht11_measure_task(void *pvParameters)
-{
-    struct dht11_reading reading; 
-    char post_req[512];
-    char post_json[255];
-    char post_clen[32];
-    char* post_json_fmt = "\r\n{\"mac\": \"%s\", \"temp\": %d, \"hum\": %d}\r\n\r\n";
-    int json_len;
-    while(1)
-    {
-        do
-        {
-            reading = DHT11_read();
-        }while(reading.temperature == -1 && reading.humidity == -1);
-        
-        sprintf(post_json, post_json_fmt, mac_str, reading.temperature, reading.humidity);
-        json_len = strlen(post_json);
-        sprintf(post_clen, POST_CLEN, json_len-6);
-        sprintf(post_req, "%s%s%s", POST_HEADER, post_clen, post_json);
-
-        ESP_LOGI("measure_task","request: %s", post_req);
-        
-        http_post_single(post_req);
-        int next_countdown = http_get_single();
-
-        for(int countdown = next_countdown; countdown >= 0; countdown--) {
-            if(countdown % 10 == 0)
-                ESP_LOGI("DHT11_MEASUREMENT_TASK", "t-minus: %d... ", countdown);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-        }
-    }
-
-}
-
-#endif
 
 
-#ifdef USE_BME280
 static void bme280_measure_task(void* pvParameters)
 {
     struct bme280_data data; //= malloc(sizeof(struct bme280_data));
@@ -133,14 +84,54 @@ static void bme280_measure_task(void* pvParameters)
         }
     }
 }
-#endif
 
+void get_bme280_measurements(struct bme280_data *data)
+{
+    dev.delay_us(7000, dev.intf_ptr);
+    bme280_get_sensor_data(BME280_ALL, data, &dev);
+    ESP_LOGI("TAG_BME280", "%.2f degF / %.3f hPa / %.3f %%", (data->temperature*(9/5))+32, data->pressure/100, data->humidity);
+}
+
+
+/*
+* measurement_task
+* "main" task to coordinate getting measurements from various sensors. 
+*/
+static void measurement_task(void* pvParameters)
+{
+    struct bme280_data data;
+    char post_req[512];
+    
+    
+    while(1)
+    {
+        
+
+        int next_countdown = http_get_single();
+        for(int countdown = next_countdown; countdown >= 0; countdown--)
+        {
+            if(countdown % 10 == 0)
+                ESP_LOGI("BME280_MEASUREMENT_TASK", "t-minus: %d... ", countdown);
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
+    }
+    
+}
+
+
+
+/*
+*   uart_read_task
+*   Polls the uart rx buffer to check for the air quality sensor messages
+*/
 static void uart_read_task(void* pvParameters)
 {
     uint8_t data[128];
     char* data_str[129];
     int length = 0;
-    uint16_t pm25;
+    pm25.lock = 0;
+    pm25.last_measurement = 0;
+
     while(1)
     {
         // Read data from UART.
@@ -150,8 +141,16 @@ static void uart_read_task(void* pvParameters)
         length = uart_read_bytes(uart_num, data, length, 100);
         if( length > 0)
         {
-            pm25 = (data[5] << 8) | data[6];
-            ESP_LOGI("uart_read_task","###############recv: %d", pm25);
+            //don't write to it if the measurement task is trying to read it
+            while(pm25.lock)
+                vTaskDelay(50/ portTICK_PERIOD_MS);
+            //lock for our uses
+            pm25.lock = !pm25.lock;
+
+            pm25.last_measurement = (data[5] << 8) | data[6];
+            //unlock
+            pm25.lock = !pm25.lock;
+            ESP_LOGI("uart_read_task","###############recv: %d", pm25.last_measurement);
         }
         
         uart_flush(uart_num);
@@ -162,7 +161,7 @@ static void uart_read_task(void* pvParameters)
 
 void i2c_master_init()
 {
-    ESP_LOGI("i2c config", "%d %d", SDA_PIN, SCL_PIN);
+    ESP_LOGI("i2c config", "%d %d", I2C_SDA, I2C_SCL);
 	i2c_config_t i2c_config = {
 		.mode = I2C_MODE_MASTER,
 		.sda_io_num = I2C_SDA,
@@ -246,14 +245,10 @@ void app_main(void)
             dev_mac[2], dev_mac[3], dev_mac[4], dev_mac[5]);
 
     //xTaskCreate(&http_post_task, "http_post_task", 4096, NULL, 5, NULL);
-    #ifndef USE_BME280
-    DHT11_init(16);
-    xTaskCreate(&dht11_measure_task, "dht11_measure_task", 4096, NULL, 5, NULL);
-    #else
+   
     i2c_master_init();
     BME280_init();
     xTaskCreate(&bme280_measure_task, "bme280_measure_task", 4096, NULL, 5, NULL);
-    #endif
 
     uart_init();
     xTaskCreate(&uart_read_task, "uart_read_task", 4096, NULL,5,NULL);
