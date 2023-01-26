@@ -10,6 +10,7 @@
 #include "protocol_examples_common.h" //solely there for example_connect() that does fancy error checking
 #include "driver/i2c.h"
 #include "driver/uart.h"
+#include "cJSON.h"
 
 //my little guys//
 #include "request.h"
@@ -24,7 +25,7 @@
 #ifdef USE_BME280
 #include "bme280.h"
 #include "bme280_user.h"
-struct bme280_dev bmedev;
+struct bme280_dev dev;
 #else
 #include "dht11.h"
 #endif
@@ -113,7 +114,6 @@ static void bme280_measure_task(void* pvParameters)
         dev.delay_us(7000, dev.intf_ptr);
         bme280_get_sensor_data(BME280_ALL, &data, &dev);
         ESP_LOGI("TAG_BME280", "%.2f degF / %.3f hPa / %.3f %%", (data.temperature*(9/5))+32, data.pressure/100, data.humidity);
-        //ESP_LOGI("TAG_BME280", "%d degC / %d hPa / %d %%", data->temperature, data->pressure, data->humidity);
 
         sprintf(post_json, post_json_fmt, mac_str, data.temperature, data.humidity);
         json_len = strlen(post_json);
