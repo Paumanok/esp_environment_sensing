@@ -36,7 +36,7 @@ struct bme280_dev dev;
 uint8_t dev_mac[6];
 char mac_str[MAC_STR_LEN];
 
-//#define wroom
+#define wroom
 #ifdef wroom
     //i2c pins
     #define I2C_SDA 18
@@ -76,11 +76,8 @@ static void dht11_measure_task(void *pvParameters)
         
         sprintf(post_json, post_json_fmt, mac_str, reading.temperature, reading.humidity);
         json_len = strlen(post_json);
-        
         sprintf(post_clen, POST_CLEN, json_len-6);
-
         sprintf(post_req, "%s%s%s", POST_HEADER, post_clen, post_json);
-
 
         ESP_LOGI("measure_task","request: %s", post_req);
         
@@ -95,6 +92,7 @@ static void dht11_measure_task(void *pvParameters)
     }
 
 }
+
 #endif
 
 
