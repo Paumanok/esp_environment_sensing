@@ -1,5 +1,6 @@
 /*
-just some includes for the user funcs
+* Platform specific implementations of functions required by generic Bosche BME280 driver
+* Author: Matthew Smith, github: @Paumanok
 */
 void BME280_delay_us(uint32_t usec);
 

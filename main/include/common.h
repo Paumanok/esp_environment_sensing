@@ -10,6 +10,7 @@
 #define I2C_MASTER_ACK 0
 #define I2C_MASTER_NACK 1
 #define I2C_MASTER_NUM 0
+#define I2C_MASTER_TIMEOUT_MS 1000
 
 
 #define DEV_ESP32 0
