@@ -24,6 +24,7 @@
 #ifdef USE_BME280
 #include "bme280.h"
 #include "bme280_user.h"
+struct bme280_dev bmedev;
 #else
 #include "dht11.h"
 #endif
@@ -99,36 +100,6 @@ static void dht11_measure_task(void *pvParameters)
 #ifdef USE_BME280
 static void bme280_measure_task(void* pvParameters)
 {
-    //pulled from the bosch git example
-    struct bme280_dev dev;
-    int8_t rslt = BME280_OK;
-    uint8_t dev_addr = BME280_I2C_ADDR_PRIM;
-
-    dev.intf_ptr = &dev_addr;
-    dev.intf = BME280_I2C_INTF;
-    dev.read = &BME280_I2C_bus_read;
-    dev.write = &BME280_I2C_bus_write;
-    dev.delay_us = BME280_delay_us;
-
-    rslt = bme280_init(&dev);
-    ESP_LOGI("bme init res", "%x", rslt);
-
-    uint8_t settings_sel;
-    dev.settings.osr_h = BME280_OVERSAMPLING_1X;
-	dev.settings.osr_p = BME280_OVERSAMPLING_1X;
-	dev.settings.osr_t = BME280_OVERSAMPLING_2X;
-	dev.settings.filter = BME280_FILTER_COEFF_OFF;
-	dev.settings.standby_time = BME280_STANDBY_TIME_62_5_MS;
-
-	settings_sel = BME280_OSR_PRESS_SEL;
-	settings_sel |= BME280_OSR_TEMP_SEL;
-	settings_sel |= BME280_OSR_HUM_SEL;
-	settings_sel |= BME280_STANDBY_SEL;
-	settings_sel |= BME280_FILTER_SEL;
-
-    bme280_set_sensor_settings(settings_sel, &dev);
-	rslt = bme280_set_sensor_mode(BME280_NORMAL_MODE, &dev);
-  
     struct bme280_data data; //= malloc(sizeof(struct bme280_data));
 
     char post_req[512];
@@ -208,13 +179,7 @@ void i2c_master_init()
 
 void uart_init()
 {
-    /**
-    *
-    *
-    *       this is mad-libs. Gotta fill in the blanks
-    *
-    *
-    */
+    
     uart_config_t uart_config = {
         .baud_rate = UART_BAUD_RATE,
         .data_bits = UART_DATA_8_BITS,
@@ -233,6 +198,38 @@ void uart_init()
     ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(uart_num, UART_PIN_NO_CHANGE, UART_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
+}
+
+void BME280_init()
+{
+    //pulled from the bosch git example
+    int8_t rslt = BME280_OK;
+    uint8_t dev_addr = BME280_I2C_ADDR_PRIM;
+
+    dev.intf_ptr = &dev_addr;
+    dev.intf = BME280_I2C_INTF;
+    dev.read = &BME280_I2C_bus_read;
+    dev.write = &BME280_I2C_bus_write;
+    dev.delay_us = BME280_delay_us;
+
+    rslt = bme280_init(&dev);
+    ESP_LOGI("bme init res", "%x", rslt);
+
+    uint8_t settings_sel;
+    dev.settings.osr_h = BME280_OVERSAMPLING_1X;
+	dev.settings.osr_p = BME280_OVERSAMPLING_1X;
+	dev.settings.osr_t = BME280_OVERSAMPLING_2X;
+	dev.settings.filter = BME280_FILTER_COEFF_OFF;
+	dev.settings.standby_time = BME280_STANDBY_TIME_62_5_MS;
+
+	settings_sel = BME280_OSR_PRESS_SEL;
+	settings_sel |= BME280_OSR_TEMP_SEL;
+	settings_sel |= BME280_OSR_HUM_SEL;
+	settings_sel |= BME280_STANDBY_SEL;
+	settings_sel |= BME280_FILTER_SEL;
+
+    bme280_set_sensor_settings(settings_sel, &dev);
+	bme280_set_sensor_mode(BME280_NORMAL_MODE, &dev);
 }
 
 void app_main(void)
@@ -256,9 +253,10 @@ void app_main(void)
     xTaskCreate(&dht11_measure_task, "dht11_measure_task", 4096, NULL, 5, NULL);
     #else
     i2c_master_init();
+    BME280_init();
     xTaskCreate(&bme280_measure_task, "bme280_measure_task", 4096, NULL, 5, NULL);
     #endif
 
-    //uart_init();
-    //xTaskCreate(&uart_read_task, "uart_read_task", 4096, NULL,5,NULL);
+    uart_init();
+    xTaskCreate(&uart_read_task, "uart_read_task", 4096, NULL,5,NULL);
 }
