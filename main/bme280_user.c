@@ -15,7 +15,6 @@
 
 
 
-
 void BME280_delay_us(uint32_t us)
 {
     //actual driver only does milisecond delays

@@ -17,40 +17,31 @@
 #include "driver/i2c.h"
 #include "driver/uart.h"
 #include "cJSON.h"
+#include "sdkconfig.h"
 
 //my little guys//
 #include "request.h"
 #include "common.h"
-//end little guys
-
-#include "sdkconfig.h"
-
 
 #include "bme280.h"
 #include "bme280_user.h"
+//end little guys
 
-
+//Globals
 struct bme280_dev dev;
 pm25_state pm25;
-
-
-
-
 
 uint8_t dev_mac[6];
 char mac_str[MAC_STR_LEN];
 
-#define DEV_MODEL DEV_ESP32
-
-
-
 const uart_port_t uart_num = USER_UART_NUM;
+//end Globals
 
 
 
 static void bme280_measure_task(void* pvParameters)
 {
-    struct bme280_data data; //= malloc(sizeof(struct bme280_data));
+    struct bme280_data data; 
 
     char post_req[512];
     char post_json[255];
@@ -64,7 +55,7 @@ static void bme280_measure_task(void* pvParameters)
         bme280_get_sensor_data(BME280_ALL, &data, &dev);
         ESP_LOGI("TAG_BME280", "%.2f degF / %.3f hPa / %.3f %%", (data.temperature*(9/5))+32, data.pressure/100, data.humidity);
 
-        sprintf(post_json, post_json_fmt, mac_str, data.temperature, data.humidity);
+        sprintf(post_json, post_json_fmt, mac_str, data.temperature, data.humidity, data.pressure);
         json_len = strlen(post_json);
         
         sprintf(post_clen, POST_CLEN, json_len-6);
@@ -101,11 +92,32 @@ static void measurement_task(void* pvParameters)
 {
     struct bme280_data data;
     char post_req[512];
-    
-    
+    char post_json[255];
+    char post_clen[32];
+    int json_len;
+
     while(1)
     {
+        get_bme280_measurements(&data);
+
+        if(PM25_ENABLED)
+        {
+            while(pm25.lock)
+                vTaskDelay(50/ portTICK_PERIOD_MS);
+            sprintf(post_json, post_json_fmt, mac_str, data.temperature, data.humidity, data.pressure, pm25.last_measurement);
+        }
+        else 
+        {
+            sprintf(post_json, post_json_fmt, mac_str, data.temperature, data.humidity, data.pressure);
+        }
+
+        json_len = strlen(post_json);
         
+        sprintf(post_clen, POST_CLEN, json_len-6);
+
+        sprintf(post_req, "%s%s%s", POST_HEADER, post_clen, post_json);
+
+        http_post_single(post_req);
 
         int next_countdown = http_get_single();
         for(int countdown = next_countdown; countdown >= 0; countdown--)
@@ -146,7 +158,6 @@ static void uart_read_task(void* pvParameters)
                 vTaskDelay(50/ portTICK_PERIOD_MS);
             //lock for our uses
             pm25.lock = !pm25.lock;
-
             pm25.last_measurement = (data[5] << 8) | data[6];
             //unlock
             pm25.lock = !pm25.lock;
@@ -154,7 +165,7 @@ static void uart_read_task(void* pvParameters)
         }
         
         uart_flush(uart_num);
-        vTaskDelay(5000/ portTICK_PERIOD_MS);
+        vTaskDelay(PM25_UART_POLL_DELAY/ portTICK_PERIOD_MS);
     }
 
 }
@@ -244,12 +255,16 @@ void app_main(void)
     sprintf(mac_str, "%02x:%02x:%02x:%02x:%02x:%02x", dev_mac[0], dev_mac[1], 
             dev_mac[2], dev_mac[3], dev_mac[4], dev_mac[5]);
 
-    //xTaskCreate(&http_post_task, "http_post_task", 4096, NULL, 5, NULL);
-   
+
+    if(PM25_ENABLED)
+    {
+        uart_init();
+        xTaskCreate(&uart_read_task, "uart_read_task", 4096, NULL,5,NULL); 
+    }
+
     i2c_master_init();
     BME280_init();
-    xTaskCreate(&bme280_measure_task, "bme280_measure_task", 4096, NULL, 5, NULL);
-
-    uart_init();
-    xTaskCreate(&uart_read_task, "uart_read_task", 4096, NULL,5,NULL);
+    //xTaskCreate(&bme280_measure_task, "bme280_measure_task", 4096, NULL, 5, NULL);
+    xTaskCreate(&measurement_task, "measurement_task", 4096, NULL, 5, NULL);
+    
 }

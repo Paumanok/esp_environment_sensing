@@ -1,5 +1,5 @@
 /*
-    Code taken and modified from:
+    (Some)Code taken and modified from:
     HTTP GET Example using plain POSIX sockets
 
     This example code is in the Public Domain (or CC0 licensed, at your option.)
@@ -136,8 +136,6 @@ void http_post_single(const char* post_req)
     ESP_LOGI(TAG, "... done reading from socket. Last read return=%d errno=%d.", r, errno);
     close(s);
 }
-
-
 
 
 
