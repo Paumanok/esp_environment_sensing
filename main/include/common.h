@@ -14,7 +14,7 @@
 #define MAC_STR_LEN 18
 
 #define UART_BAUD_RATE 9600
-#define PM25_UART_POLL_DELAY 5000
+#define PM25_UART_POLL_DELAY 2000
 
 //#define BME280_FLOAT_ENABLE
 
@@ -56,9 +56,9 @@ typedef struct
 * Format strings used for creating responses
 */
 #if PM25_ENABLED
-static const char *post_json_fmt = "\r\n{\"mac\": \"%s\", \"temp\": %.2f, \"hum\": %.2f, \"pressure\": %.2f}\r\n\r\n";
-#else
 static const char *post_json_fmt = "\r\n{\"mac\": \"%s\", \"temp\": %.2f, \"hum\": %.2f, \"pressure\": %.2f, \"pm25\": %d}\r\n\r\n";
+#else
+static const char *post_json_fmt = "\r\n{\"mac\": \"%s\", \"temp\": %.2f, \"hum\": %.2f, \"pressure\": %.2f}\r\n\r\n";
 #endif
 static const char *TAG = "HT_ESP";
 

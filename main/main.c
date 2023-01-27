@@ -1,9 +1,9 @@
 /*
-*
-*
-*
-*
-*
+* main.c
+* esp32/s2 environment sensing for use with a self hosted REST server for tracking data. 
+* temp/humidity/pressure measured using a Bosch BME280
+* pm25 measured using an ikea vindriktning
+* Author: Matthew smith, Github: @paumanok
 */
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -116,7 +116,7 @@ static void measurement_task(void* pvParameters)
         sprintf(post_clen, POST_CLEN, json_len-6);
 
         sprintf(post_req, "%s%s%s", POST_HEADER, post_clen, post_json);
-
+        ESP_LOGI("measure_task","request: %s", post_req);
         http_post_single(post_req);
 
         int next_countdown = http_get_single();
@@ -143,6 +143,7 @@ static void uart_read_task(void* pvParameters)
     int length = 0;
     pm25.lock = 0;
     pm25.last_measurement = 0;
+    int temp_pm25;
 
     while(1)
     {
@@ -153,15 +154,20 @@ static void uart_read_task(void* pvParameters)
         length = uart_read_bytes(uart_num, data, length, 100);
         if( length > 0)
         {
-            //don't write to it if the measurement task is trying to read it
-            while(pm25.lock)
-                vTaskDelay(50/ portTICK_PERIOD_MS);
-            //lock for our uses
-            pm25.lock = !pm25.lock;
-            pm25.last_measurement = (data[5] << 8) | data[6];
-            //unlock
-            pm25.lock = !pm25.lock;
-            ESP_LOGI("uart_read_task","###############recv: %d", pm25.last_measurement);
+            temp_pm25 = (data[5] << 8) | data[6];
+            if(temp_pm25 != 0) //a zero value will mess up a graph, not sure if I should keep this
+            {
+                //don't write to it if the measurement task is trying to read it
+                while(pm25.lock)
+                    vTaskDelay(50/ portTICK_PERIOD_MS);
+                //lock for our uses
+                pm25.lock = !pm25.lock;
+                pm25.last_measurement = temp_pm25;
+                //unlock
+                pm25.lock = !pm25.lock;
+                ESP_LOGI("uart_read_task","###############recv: %d", pm25.last_measurement);
+            }
+            
         }
         
         uart_flush(uart_num);
