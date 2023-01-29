@@ -24,7 +24,7 @@
 #define WEB_PATH "/"
 
 
-#define PM25_ENABLED 1
+#define PM25_ENABLED 0
 
 #if CONFIG_IDF_TARGET_ESP32
     //i2c pins
@@ -39,7 +39,7 @@
     #define I2C_SDA 13
     #define I2C_SCL 12
     //uart pins
-    #define UART_RX 16
+    #define UART_RX 18
     #define USER_UART_NUM 1
 #endif
 
