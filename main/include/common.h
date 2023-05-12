@@ -74,6 +74,12 @@ static const char *POST_HEADER ="POST /data " " HTTP/1.1\r\n"
     "Accept: */*\r\n"
     "Content-Type: application/json\r\n";
 
+static const char *POST_LOG = "POST /log " " HTTP/1.1\r\n"
+    "Host: "WEB_SERVER":"WEB_PORT"\r\n"
+    "User-Agent: esp-idf/1.0 esp32\r\n"
+    "Accept: */*\r\n"
+    "Content-Type: application/json\r\n";
+
 static const char *POST_CLEN = "Content-Length: %d\r\n";
 static const char *POST_JSON = "\r\n"
                                 "%s\r\n"

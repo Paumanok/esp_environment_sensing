@@ -8,19 +8,22 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_mac.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
-#include "protocol_examples_common.h" //solely there for example_connect() that does fancy error checking
+//#include "protocol_examples_common.h" //solely there for example_connect() that does fancy error checking
 #include "driver/i2c.h"
 #include "driver/uart.h"
 #include "cJSON.h"
 #include "sdkconfig.h"
+#include "esp_sleep.h"
 
 //my little guys//
 #include "request.h"
+#include "wifi_station.h"
 #include "common.h"
 
 #include "bme280.h"
@@ -67,12 +70,14 @@ static void bme280_measure_task(void* pvParameters)
         
         http_post_single(post_req);
         int next_countdown = http_get_single();
-
-        for(int countdown = next_countdown; countdown >= 0; countdown--) {
-            if(countdown % 10 == 0)
-                ESP_LOGI("BME280_MEASUREMENT_TASK", "t-minus: %d... ", countdown);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-        }
+        
+        esp_sleep_enable_timer_wakeup(next_countdown * 1000000); //time is in microseconds
+        esp_light_sleep_start();
+        //for(int countdown = next_countdown; countdown >= 0; countdown--) {
+        //    if(countdown % 10 == 0)
+        //        ESP_LOGI("BME280_MEASUREMENT_TASK", "t-minus: %d... ", countdown);
+        //    vTaskDelay(1000 / portTICK_PERIOD_MS);
+        //}
     }
 }
 
@@ -117,15 +122,30 @@ static void measurement_task(void* pvParameters)
 
         sprintf(post_req, "%s%s%s", POST_HEADER, post_clen, post_json);
         ESP_LOGI("measure_task","request: %s", post_req);
+        http_get_single(); //this is here because it seems like the first socket reconnect fails
         http_post_single(post_req);
 
         int next_countdown = http_get_single();
-        for(int countdown = next_countdown; countdown >= 0; countdown--)
-        {
-            if(countdown % 10 == 0)
-                ESP_LOGI("BME280_MEASUREMENT_TASK", "t-minus: %d... ", countdown);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-        }
+        //esp_wifi_disconnect();
+        esp_wifi_stop();
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        
+        ESP_LOGI("measure_task", "entering sleep: %d seconds", next_countdown);
+        vTaskDelay(200 / portTICK_PERIOD_MS);
+        
+        esp_sleep_enable_timer_wakeup(next_countdown * 1000000); //time is in microseconds
+        esp_light_sleep_start();
+        
+        esp_wifi_start();
+        
+        xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, 500 / portTICK_PERIOD_MS);
+        //ESP_LOGI("measure_task","exiting sleep after %d seconds", next_countdown);
+        //for(int countdown = next_countdown; countdown >= 0; countdown--)
+        //{
+        //    if(countdown % 10 == 0)
+        //        ESP_LOGI("BME280_MEASUREMENT_TASK", "t-minus: %d... ", countdown);
+        //    vTaskDelay(1000 / portTICK_PERIOD_MS);
+        //}
     }
     
 }
@@ -256,7 +276,8 @@ void app_main(void)
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
      */
-    ESP_ERROR_CHECK(example_connect());
+    //ESP_ERROR_CHECK(example_connect());
+    wifi_init_sta();
     esp_read_mac(dev_mac, ESP_MAC_WIFI_STA);
     sprintf(mac_str, "%02x:%02x:%02x:%02x:%02x:%02x", dev_mac[0], dev_mac[1], 
             dev_mac[2], dev_mac[3], dev_mac[4], dev_mac[5]);
